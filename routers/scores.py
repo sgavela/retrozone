@@ -1,22 +1,26 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, status
 from typing import Optional
 from database import get_connection
+from models import ScoreCreate, ScoreUpdate
 
 router = APIRouter(prefix="/scores", tags=["Scores"])
 
 
-class ScoreCreate(BaseModel):
-    player_id: int
-    game_name: str
-    points: int
-    level: int
-
-
-class ScoreUpdate(BaseModel):
-    game_name: Optional[str] = None
-    points: Optional[int] = None
-    level: Optional[int] = None
+@router.get("/top")
+def get_top_scores(limit: Optional[int] = 3):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM scores ORDER BY points DESC LIMIT ?", (limit,)
+    )
+    scores = cursor.fetchall()
+    conn.close()
+    if not scores:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No scores on the board yet. Be the first to play!"
+        )
+    return [dict(s) for s in scores]
 
 
 @router.get("/")
@@ -55,13 +59,25 @@ def get_score(score_id: int):
     cursor.execute("SELECT * FROM scores WHERE id = ?", (score_id,))
     score = cursor.fetchone()
     conn.close()
+    if score is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Score with id {score_id} not found."
+        )
     return dict(score)
 
 
-@router.post("/")
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_score(score: ScoreCreate):
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT * FROM players WHERE id = ?", (score.player_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Player with id {score.player_id} not found."
+        )
     cursor.execute(
         "INSERT INTO scores (player_id, game_name, points, level) VALUES (?, ?, ?, ?)",
         (score.player_id, score.game_name, score.points, score.level)
@@ -82,6 +98,13 @@ def create_score(score: ScoreCreate):
 def update_score(score_id: int, score: ScoreUpdate):
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scores WHERE id = ?", (score_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Score with id {score_id} not found."
+        )
     if score.game_name is not None:
         cursor.execute(
             "UPDATE scores SET game_name = ? WHERE id = ?",
@@ -108,6 +131,13 @@ def update_score(score_id: int, score: ScoreUpdate):
 def delete_score(score_id: int):
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scores WHERE id = ?", (score_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Score with id {score_id} not found."
+        )
     cursor.execute("DELETE FROM scores WHERE id = ?", (score_id,))
     conn.commit()
     conn.close()
