@@ -12,7 +12,7 @@
 Make sure you have the following installed before starting:
 
 ```bash
-pip install fastapi uvicorn requests sqlite3 streamlit
+pip install fastapi uvicorn streamlit pydantic[email]
 ```
 
 Your project structure will look like this by the end:
